@@ -2,25 +2,45 @@ using System.Net.Sockets;
 public class ClientHandler
 {
     private TcpClient _client;
-    public ClientHandler(TcpClient client) 
+    private Server _server;
+    private StreamWriter? _writer;
+    private object _writeLock = new object();
+
+    public ClientHandler(TcpClient client, Server server) 
     { 
-        _client = client; 
+        _client = client;
+        _server = server; 
     }
     public void Run()
     {
-        // stream + reader/writer sur _client (AutoFlush = true),
-        // boucle while ReadLine() != null de l'étape 1, puis "Client déconnecté." + _client.Close()
         NetworkStream stream = _client.GetStream();
         StreamReader reader = new StreamReader(stream);
-        StreamWriter writer = new StreamWriter(stream);
-        writer.AutoFlush = true;
+        _writer = new StreamWriter(stream);
+        _writer.AutoFlush = true;
+        _server.MessageBroadcast += OnBroadcast;
         string? line;
         while ((line = reader.ReadLine()) != null)
         {
             Console.WriteLine($"Reçu : {line}");
-            writer.WriteLine($"Echo : {line}");
+            _server.Broadcast($"{_client.Client.RemoteEndPoint} : {line}");
         }
         Console.WriteLine("Client déconnecté.");
+        _server.MessageBroadcast -= OnBroadcast;
         _client.Close(); 
+    }
+
+      private void OnBroadcast(object sender, MessageEventArgs e)
+    {
+        lock (_writeLock)
+        {
+            try{
+                _writer.WriteLine(e.Text);
+            }
+            catch (IOException)
+            {
+                Console.WriteLine("Erreur d'envoi à un client (déconnecté ?)");   // sera remplacé par le Logger
+            }
+        }
+
     }
 }
