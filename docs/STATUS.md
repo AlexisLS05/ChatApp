@@ -6,7 +6,7 @@
 3. `Logger` abonné à 4 événements du `Server` (`ClientConnected`, `ClientDisconnected`, `MessageReceived`, `ErrorOccurred`), console + `server.log` sous lock.
 4. Start/stop : thread Accept dédié, `stop` dans la console serveur (copie sous lock, fermeture hors lock, attente de la fin des handlers).
 5. Client robuste : serveur absent, coupure détectée par le thread de lecture (`Environment.Exit`), `/quit` propre.
-6. `/joke` (HttpClient statique, appel synchrone, System.Text.Json).
+6. `/joke` (catégorie dev, HttpClient statique, appel synchrone, System.Text.Json).
 - Tests manuels scriptés (sockets) : login/doublon, broadcast, /msg (+ inconnu), /users, /name (+ doublon), /help, /quit, reset brutal, stop, client sans serveur, /joke.
 - docs/report.html, make_zip.ps1.
 
@@ -16,7 +16,7 @@
 - Pas de projet de tests ni de CI (volontaire).
 
 ## Risques ouverts
-- `/joke` : l'API renvoie des blagues non filtrées (parfois vulgaires/politiques). Vérifier avant capture et démo.
+- `/joke` : catégorie `dev` uniquement (évite les blagues explicites) ; contenu toujours fourni par un tiers.
 - `/joke` dépend du réseau ; hors ligne → « Service de blagues indisponible » (géré).
 - Diagrammes Mermaid chargés par CDN : il faut Internet à l'ouverture de report.html, et attendre le rendu avant Ctrl+P.
 - Un client connecté mais pas encore loggé n'est pas dans le Dictionary : à l'arrêt il n'est pas prévenu, sa socket est fermée à la sortie du processus.

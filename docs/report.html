@@ -93,7 +93,7 @@ LAUNAY-SCHAPMAN Alexis — EFREI I2, Interface Development and Design</p>
 <tr><td><code>/users</code></td><td>List connected users.</td></tr>
 <tr><td><code>/msg user text</code></td><td>Private message.</td></tr>
 <tr><td><code>/help</code></td><td>List of commands (extension).</td></tr>
-<tr><td><code>/joke</code></td><td>Fetches a joke from api.chucknorris.io and broadcasts it (extension).</td></tr>
+<tr><td><code>/joke</code></td><td>Fetches a programming joke from api.chucknorris.io (category <code>dev</code>) and broadcasts it (extension).</td></tr>
 </table>
 
 <h3>Extensions beyond the statement</h3>
@@ -307,7 +307,7 @@ sequenceDiagram
 
 <div class="feature">
 <h3 id="f-joke">b.9 Extension: /joke</h3>
-<p><code>/joke</code> calls <code>JokeService.GetJoke</code>, which uses a single static <code>HttpClient</code> shared by the whole application and a synchronous <code>Send</code> (consistent with the thread-based design: the call blocks only the requesting client's thread). The JSON field <code>value</code> is read with <code>System.Text.Json</code> and the joke is broadcast to everyone. Any network or parsing error is logged and the requester receives “Service de blagues indisponible.”</p>
+<p><code>/joke</code> calls <code>JokeService.GetJoke</code>, which uses a single static <code>HttpClient</code> shared by the whole application and a synchronous <code>Send</code> (consistent with the thread-based design: the call blocks only the requesting client's thread). The request targets <code>/jokes/random?category=dev</code> to avoid explicit jokes. The JSON field <code>value</code> is read with <code>System.Text.Json</code> and the joke is broadcast to everyone. Any network or parsing error is logged and the requester receives “Service de blagues indisponible.”</p>
 <pre class="mermaid">
 sequenceDiagram
   participant C as Client
@@ -317,7 +317,7 @@ sequenceDiagram
   participant L as Logger
   C->>H: /joke
   H->>J: GetJoke()
-  J->>J: HttpClient.Send GET api.chucknorris.io
+  J->>J: HttpClient.Send GET api.chucknorris.io category dev
   alt success
     J-->>H: value
     H->>S: Broadcast("[21:10] Chuck Norris : ...")
