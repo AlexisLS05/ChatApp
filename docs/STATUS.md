@@ -12,7 +12,6 @@
 
 ## Pas fait
 - Captures d'écran (docs/screenshots/) et docs/report.pdf : à faire par toi.
-- Nom du binôme dans le zip (`NOMBINOME`) et dans le rapport : à renseigner.
 - Pas de projet de tests ni de CI (volontaire).
 
 ## Risques ouverts

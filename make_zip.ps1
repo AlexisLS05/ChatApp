@@ -1,8 +1,8 @@
-﻿# Crée LAUNAY-SCHAPMAN_NOMBINOME_Project.zip : solution (sans bin/, obj/, .git/, .vs/) + docs/report.pdf
+﻿# Crée LAUNAY-SCHAPMAN_AUGAY_Project.zip : solution (sans bin/, obj/, .git/, .vs/) + docs/report.pdf
 # Usage : powershell -ExecutionPolicy Bypass -File .\make_zip.ps1
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
-$zipName = "LAUNAY-SCHAPMAN_NOMBINOME_Project.zip"
+$zipName = "LAUNAY-SCHAPMAN_AUGAY_Project.zip"
 $zipPath = Join-Path $root $zipName
 $report = Join-Path $root "docs\report.pdf"
 
