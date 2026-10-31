@@ -49,4 +49,33 @@ public class Server
             _clients.Remove(name);
         }
     }
+
+    // Change le pseudo ; vérification d'unicité et remplacement sous le même lock
+    public bool TryRename(string oldName, string newName, ClientHandler handler)
+    {
+        lock (_clientsLock)
+        {
+            bool sameUser = string.Equals(oldName, newName, StringComparison.OrdinalIgnoreCase);
+            if (!sameUser && _clients.ContainsKey(newName)) return false;
+            _clients.Remove(oldName);
+            _clients.Add(newName, handler);
+            return true;
+        }
+    }
+
+    public ClientHandler? Find(string name)
+    {
+        lock (_clientsLock)
+        {
+            return _clients.TryGetValue(name, out ClientHandler? handler) ? handler : null;
+        }
+    }
+
+    public List<string> GetUserNames()
+    {
+        lock (_clientsLock)
+        {
+            return _clients.Keys.OrderBy(n => n).ToList();
+        }
+    }
 }
