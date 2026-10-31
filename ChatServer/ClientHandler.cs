@@ -146,8 +146,24 @@ public class ClientHandler
                 Send("Au revoir !");
                 return false;
 
+            case "/joke":
+                try
+                {
+                    string joke = JokeService.GetJoke();
+                    _server.NotifyMessage($"{Name} a demandé une blague");
+                    _server.Broadcast(Server.Format("Chuck Norris", joke));
+                }
+                catch (Exception ex) when (ex is HttpRequestException || ex is TaskCanceledException
+                                           || ex is System.Text.Json.JsonException || ex is KeyNotFoundException
+                                           || ex is IOException || ex is InvalidOperationException)
+                {
+                    _server.ReportError($"/joke : {ex.Message}");
+                    Send("Service de blagues indisponible.");
+                }
+                break;
+
             case "/help":
-                Send("Commandes : /msg pseudo texte | /users | /name nouveau | /quit | /help");
+                Send("Commandes : /msg pseudo texte | /users | /name nouveau | /joke | /quit | /help");
                 break;
 
             default:
