@@ -22,3 +22,6 @@
 - Pendant le `finally`, le pseudo reste réservé jusqu'au `Unregister` (quelques ms) : un relogin immédiat avec le même pseudo peut être refusé une fois.
 - `server.log` est créé dans le dossier courant au lancement (lancer depuis la racine ChatApp).
 - Affichage des accents : dépend de la page de code de la console Windows (OK en Windows Terminal / VS Code).
+- Client : `Console.ReadLine` sous Windows redessine la saisie à sa position de départ ; une ligne reçue pendant l'attente peut être écrasée à la frappe suivante. Affichage seulement (le message est bien reçu). Correction possible : saisie par `Console.ReadKey` + lock partagé avec le thread réseau. Contournement : Entrée à vide avant de taper.
+- Broadcast synchrone : l'event est invoqué sur le thread de l'expéditeur, un client lent ralentit l'expéditeur.
+- Un thread par client : ne passe pas à l'échelle (alternative : async/await).

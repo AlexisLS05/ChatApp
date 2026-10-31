@@ -50,6 +50,7 @@ LAUNAY-SCHAPMAN Alexis &amp; AUGAY Eliott — EFREI I2, Interface Development an
       <li><a href="#f-log">Logging server activity</a></li>
       <li><a href="#f-robust">Disconnections and client robustness</a></li>
       <li><a href="#f-joke">Extension: /joke</a></li>
+      <li><a href="#f-limits">Known limitations</a></li>
     </ol>
   </li>
   <li><a href="#impl">Main parts of the C# implementation</a></li>
@@ -329,6 +330,31 @@ sequenceDiagram
   end
 </pre>
 <figure><img src="screenshots/08_joke.png" alt="/joke"><figcaption><code>/joke</code> broadcast to every client</figcaption></figure>
+</div>
+
+<div class="feature">
+<h3 id="f-limits">b.10 Known limitations</h3>
+<table>
+<tr><th>Limitation</th><th>Cause</th><th>Impact</th><th>Possible fix</th></tr>
+<tr>
+  <td>A received line can be overwritten in the client window</td>
+  <td>On Windows, <code>Console.ReadLine</code> remembers where the input started and redraws the input from that position at the next keystroke. A line printed by the network thread while <code>ReadLine</code> is waiting can therefore be overwritten.</td>
+  <td>Display only: the message is correctly received (it is lost from the screen, not from the protocol).</td>
+  <td>Read the input key by key with <code>Console.ReadKey</code>, and share a lock with the network thread so it can clear the current input line, print the message, then redraw the input.</td>
+</tr>
+<tr>
+  <td>Synchronous broadcast</td>
+  <td>The <code>MessageBroadcast</code> event invokes every subscriber on the sender's thread, and each <code>OnBroadcast</code> writes to a socket.</td>
+  <td>A slow client (full TCP buffer) slows down the sender of the message.</td>
+  <td>One outgoing queue and writer thread per client, or asynchronous writes.</td>
+</tr>
+<tr>
+  <td>One thread per client</td>
+  <td>Each connection holds a dedicated thread blocked on <code>ReadLine</code>.</td>
+  <td>Fine for a classroom chat, but does not scale to thousands of clients (memory and context switches).</td>
+  <td><code>async</code>/<code>await</code> with asynchronous socket I/O.</td>
+</tr>
+</table>
 </div>
 </section>
 
