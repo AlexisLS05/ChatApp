@@ -25,6 +25,22 @@ public class Server
         OnMessageBroadcast(args);
     }
 
+    // Événements d'activité, écoutés par le Logger (même modèle que le broadcast)
+    public event LogEventHandler? ClientConnected;
+    public event LogEventHandler? ClientDisconnected;
+    public event LogEventHandler? MessageReceived;
+    public event LogEventHandler? ErrorOccurred;
+
+    protected virtual void OnClientConnected(LogEventArgs e) { ClientConnected?.Invoke(this, e); }
+    protected virtual void OnClientDisconnected(LogEventArgs e) { ClientDisconnected?.Invoke(this, e); }
+    protected virtual void OnMessageReceived(LogEventArgs e) { MessageReceived?.Invoke(this, e); }
+    protected virtual void OnErrorOccurred(LogEventArgs e) { ErrorOccurred?.Invoke(this, e); }
+
+    public void NotifyConnected(string text) { OnClientConnected(new LogEventArgs(text)); }
+    public void NotifyDisconnected(string text) { OnClientDisconnected(new LogEventArgs(text)); }
+    public void NotifyMessage(string text) { OnMessageReceived(new LogEventArgs(text)); }
+    public void ReportError(string text) { OnErrorOccurred(new LogEventArgs(text)); }
+
     // Message horodaté côté serveur
     public static string Format(string name, string text)
     {

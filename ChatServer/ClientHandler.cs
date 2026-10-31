@@ -6,6 +6,7 @@ public class ClientHandler
     private Server _server;
     private StreamWriter? _writer;
     private object _writeLock = new object();
+    private string _endPoint;
 
     // Pseudo ; null tant que le login n'a pas réussi
     public string? Name { get; private set; }
@@ -14,6 +15,7 @@ public class ClientHandler
     {
         _client = client;
         _server = server;
+        _endPoint = client.Client.RemoteEndPoint?.ToString() ?? "?";
     }
 
     public void Run()
@@ -28,6 +30,7 @@ public class ClientHandler
             if (!Login(reader)) return;
 
             _server.MessageBroadcast += OnBroadcast;
+            _server.NotifyConnected($"{Name} ({_endPoint})");
             _server.Broadcast($"*** {Name} a rejoint le chat.");
 
             string? line;
@@ -40,13 +43,15 @@ public class ClientHandler
                 }
                 else
                 {
+                    _server.NotifyMessage($"{Name} : {line}");
                     _server.Broadcast(Server.Format(Name!, line));
                 }
             }
         }
-        catch (IOException)
+        catch (IOException ex)
         {
             // Déconnexion brutale du client
+            _server.ReportError($"Connexion perdue avec {Name ?? _endPoint} : {ex.Message}");
         }
         catch (ObjectDisposedException)
         {
@@ -58,6 +63,7 @@ public class ClientHandler
             if (Name != null)
             {
                 _server.Unregister(Name);
+                _server.NotifyDisconnected($"{Name} ({_endPoint})");
                 _server.Broadcast($"*** {Name} a quitté le chat.");
             }
             Close();
@@ -107,6 +113,7 @@ public class ClientHandler
                     break;
                 }
                 // Écriture directe dans le writer du destinataire + écho à l'expéditeur
+                _server.NotifyMessage($"{Name} -> {target.Name} (privé)");
                 target.Send($"[{DateTime.Now:HH:mm}] (privé) {Name} : {parts[2]}");
                 Send($"[{DateTime.Now:HH:mm}] (privé à {target.Name}) {Name} : {parts[2]}");
                 break;
@@ -130,6 +137,7 @@ public class ClientHandler
                     break;
                 }
                 Name = newName;
+                _server.NotifyMessage($"{oldName} renommé en {newName}");
                 _server.Broadcast($"*** {oldName} s'appelle maintenant {newName}.");
                 break;
 
@@ -162,9 +170,9 @@ public class ClientHandler
             {
                 _writer?.WriteLine(text);
             }
-            catch (IOException)
+            catch (IOException ex)
             {
-                Console.WriteLine("Erreur d'envoi à un client (déconnecté ?)");
+                _server.ReportError($"Envoi impossible à {Name ?? _endPoint} : {ex.Message}");
             }
             catch (ObjectDisposedException)
             {
