@@ -485,3 +485,6 @@ $RECYCLE.BIN/
 
 # Journal du serveur
 server.log
+
+# Archive de rendu
+*.zip
