@@ -51,7 +51,8 @@ public class ClientHandler
         catch (IOException ex)
         {
             // Déconnexion brutale du client
-            _server.ReportError($"Connexion perdue avec {Name ?? _endPoint} : {ex.Message}");
+            if (!_server.IsStopping)
+                _server.ReportError($"Connexion perdue avec {Name ?? _endPoint} : {ex.Message}");
         }
         catch (ObjectDisposedException)
         {
@@ -172,7 +173,8 @@ public class ClientHandler
             }
             catch (IOException ex)
             {
-                _server.ReportError($"Envoi impossible à {Name ?? _endPoint} : {ex.Message}");
+                if (!_server.IsStopping)
+                    _server.ReportError($"Envoi impossible à {Name ?? _endPoint} : {ex.Message}");
             }
             catch (ObjectDisposedException)
             {

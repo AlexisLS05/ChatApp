@@ -87,6 +87,26 @@ public class Server
         }
     }
 
+    // Vrai pendant l'arrêt : les erreurs d'envoi attendues ne sont plus journalisées
+    public volatile bool IsStopping;
+
+    // Arrêt : copie sous lock, puis prévient et ferme HORS du lock
+    // (les finally des ClientHandler appellent Unregister qui reprend le lock)
+    public void StopAll(string message)
+    {
+        IsStopping = true;
+        List<ClientHandler> handlers;
+        lock (_clientsLock)
+        {
+            handlers = _clients.Values.ToList();
+        }
+        foreach (ClientHandler handler in handlers)
+        {
+            handler.Send(message);
+            handler.Close();
+        }
+    }
+
     public List<string> GetUserNames()
     {
         lock (_clientsLock)
