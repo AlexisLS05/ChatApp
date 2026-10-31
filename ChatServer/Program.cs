@@ -54,5 +54,10 @@ server.IsStopping = true;
 listener.Stop();   // plus de nouvelles connexions
 server.StopAll("*** Le serveur s'arrête. Au revoir !");
 acceptThread.Join(2000);
+
+// Attend (2 s max) que chaque ClientHandler ait fini son finally et journalisé son départ
+DateTime limit = DateTime.Now.AddSeconds(2);
+while (server.GetUserNames().Count > 0 && DateTime.Now < limit)
+    Thread.Sleep(50);
 logger.Detach(server);
 Console.WriteLine("Serveur arrêté.");

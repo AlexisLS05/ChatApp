@@ -63,9 +63,9 @@ public class ClientHandler
             _server.MessageBroadcast -= OnBroadcast;
             if (Name != null)
             {
-                _server.Unregister(Name);
                 _server.NotifyDisconnected($"{Name} ({_endPoint})");
                 _server.Broadcast($"*** {Name} a quitté le chat.");
+                _server.Unregister(Name); // en dernier : l'arrêt attend la liste vide
             }
             Close();
         }
