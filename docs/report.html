@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Client–Server Chat Application — Report</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  body { font-family: "Segoe UI", Calibri, Arial, sans-serif; font-size: 11pt; line-height: 1.45; color: #222; max-width: 820px; margin: 0 auto; padding: 24px; }
+  h1 { font-size: 22pt; margin-bottom: 4px; color: #1a3d5c; }
+  h2 { font-size: 16pt; color: #1a3d5c; border-bottom: 2px solid #1a3d5c; padding-bottom: 4px; margin-top: 0; }
+  h3 { font-size: 13pt; color: #1a3d5c; margin-top: 22px; }
+  .subtitle { color: #555; margin-top: 0; }
+  section { break-before: page; page-break-before: always; }
+  section.first { break-before: auto; page-break-before: auto; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 10pt; }
+  th, td { border: 1px solid #bbb; padding: 5px 8px; text-align: left; vertical-align: top; }
+  th { background: #e8eef4; }
+  code { font-family: Consolas, "Courier New", monospace; font-size: 9.5pt; background: #f2f2f2; padding: 0 3px; }
+  pre.code { font-family: Consolas, "Courier New", monospace; font-size: 9pt; background: #f6f8fa; border: 1px solid #d0d7de; border-left: 4px solid #1a3d5c; padding: 8px 10px; white-space: pre-wrap; break-inside: avoid; page-break-inside: avoid; }
+  pre.mermaid { background: none; border: none; text-align: center; break-inside: avoid; page-break-inside: avoid; }
+  figure { margin: 12px 0; text-align: center; break-inside: avoid; page-break-inside: avoid; }
+  figure img { max-width: 100%; max-height: 330px; border: 1px solid #ccc; }
+  figcaption { font-size: 9.5pt; color: #555; margin-top: 4px; }
+  .toc ol { line-height: 1.8; }
+  .toc a { color: #1a3d5c; text-decoration: none; }
+  .feature { break-inside: auto; }
+  .note { font-size: 10pt; color: #555; }
+  @media print { body { padding: 0; max-width: none; } a { color: inherit; } }
+</style>
+</head>
+<body>
+
+<section class="first">
+<h1>Client–Server Chat Application</h1>
+<p class="subtitle">C# / .NET 9 — TCP sockets, threads, delegates and events<br>
+LAUNAY-SCHAPMAN Alexis &amp; AUGAY Eliott — EFREI I2, Interface Development and Design</p>
+
+<div class="toc">
+<h2>Table of contents</h2>
+<ol type="a">
+  <li><a href="#functions">Functions implemented</a></li>
+  <li><a href="#design">Design of each feature</a>
+    <ol>
+      <li><a href="#arch">Architecture overview</a></li>
+      <li><a href="#f-start">Start and stop the server</a></li>
+      <li><a href="#f-login">Connection and username login</a></li>
+      <li><a href="#f-broadcast">Public messages and broadcast with delegates</a></li>
+      <li><a href="#f-private">Private messages</a></li>
+      <li><a href="#f-commands">Commands /users, /name, /help, /quit</a></li>
+      <li><a href="#f-log">Logging server activity</a></li>
+      <li><a href="#f-robust">Disconnections and client robustness</a></li>
+      <li><a href="#f-joke">Extension: /joke</a></li>
+      <li><a href="#f-limits">Known limitations</a></li>
+    </ol>
+  </li>
+  <li><a href="#impl">Main parts of the C# implementation</a></li>
+</ol>
+</div>
+</section>
+
+<!-- ===================================================== a -->
+<section id="functions">
+<h2>a. Functions implemented</h2>
+<p>Numbering follows the project statement (<code>docs/Project.pdf</code>). All listed functions are implemented.</p>
+
+<h3>Server-side functions</h3>
+<table>
+<tr><th>#</th><th>Function</th><th>Implementation</th></tr>
+<tr><td>1</td><td>Start and stop the server</td><td>Accept loop in its own thread; typing <code>stop</code> in the server console warns every client, stops the listener and closes all sockets.</td></tr>
+<tr><td>2</td><td>Accept multiple client connections via TCP sockets</td><td><code>TcpListener</code> on 127.0.0.1:5050, one background thread per client (<code>ClientHandler</code>).</td></tr>
+<tr><td>3</td><td>Authenticate users (username-based login)</td><td>First line sent by the client is the username; it must be unique (case-insensitive) and valid, otherwise the server asks again.</td></tr>
+<tr><td>4</td><td>Maintain a list of connected clients</td><td><code>Dictionary&lt;string, ClientHandler&gt;</code> in <code>Server</code>, protected by a lock on a private object.</td></tr>
+<tr><td>5</td><td>Receive messages from clients</td><td>Text protocol, one line = one message, read by the client's thread; commands are parsed on the server.</td></tr>
+<tr><td>6</td><td>Broadcast messages using delegates</td><td><code>MessageEventHandler</code> delegate + <code>MessageBroadcast</code> event; every <code>ClientHandler</code> subscribes. Messages are time-stamped by the server: <code>[HH:mm] user : text</code>.</td></tr>
+<tr><td>7</td><td>Send private messages to specific users</td><td><code>/msg user text</code>: written directly to the recipient's writer, echoed to the sender; clear error if the user is unknown.</td></tr>
+<tr><td>8</td><td>Log server activity</td><td><code>Logger</code> subscribed to the server events <code>ClientConnected</code>, <code>ClientDisconnected</code>, <code>MessageReceived</code>, <code>ErrorOccurred</code>; writes to the console and <code>server.log</code>.</td></tr>
+</table>
+
+<h3>Client-side functions</h3>
+<table>
+<tr><th>#</th><th>Function</th><th>Implementation</th></tr>
+<tr><td>1</td><td>Connect to the server</td><td><code>TcpClient</code> to 127.0.0.1:5050; clear message if the server is not running.</td></tr>
+<tr><td>2</td><td>Send username</td><td>The first line typed is sent as the username; the server's answer is displayed.</td></tr>
+<tr><td>3</td><td>Send public messages</td><td>Keyboard thread (main thread) writes each line to the socket.</td></tr>
+<tr><td>4</td><td>Receive and display broadcast messages</td><td>Separate network-reading thread prints every line received.</td></tr>
+<tr><td>5</td><td>Send and receive private messages</td><td><code>/msg user text</code>; private messages are shown as <code>(privé)</code>.</td></tr>
+</table>
+
+<h3>Commands</h3>
+<table>
+<tr><th>Command</th><th>Effect</th></tr>
+<tr><td><code>/name new</code></td><td>Change username (uniqueness checked under the lock), announced to everyone.</td></tr>
+<tr><td><code>/quit</code></td><td>Clean disconnection; departure announced to everyone.</td></tr>
+<tr><td><code>/users</code></td><td>List connected users.</td></tr>
+<tr><td><code>/msg user text</code></td><td>Private message.</td></tr>
+<tr><td><code>/help</code></td><td>List of commands (extension).</td></tr>
+<tr><td><code>/joke</code></td><td>Fetches a programming joke from api.chucknorris.io (category <code>dev</code>) and broadcasts it (extension).</td></tr>
+</table>
+
+<h3>Extensions beyond the statement</h3>
+<ul>
+  <li>Server-side timestamps, arrival/departure announcements, <code>/help</code>, <code>/joke</code>.</li>
+  <li>Robust cleanup: a client that disconnects abruptly is always unsubscribed and removed from the list.</li>
+  <li>Persistent log file <code>server.log</code>.</li>
+</ul>
+<p class="note">Note: user-facing messages of the application are in French (e.g. « a rejoint le chat » = “joined the chat”, « privé » = “private”).</p>
+</section>
+
+<!-- ===================================================== b -->
+<section id="design">
+<h2>b. Design of each feature</h2>
+
+<h3 id="arch">b.1 Architecture overview</h3>
+<p>Two console projects in one solution (<code>ChatApp.sln</code>):</p>
+<ul>
+  <li><b>ChatServer</b>: <code>Program.cs</code> (listener, accept thread, console <code>stop</code>), <code>Server</code> (shared object: client dictionary, broadcast event, activity events), <code>ClientHandler</code> (one per client, runs in its own thread, parses commands), <code>Logger</code> (subscriber to activity events), <code>JokeService</code> (HTTP call).</li>
+  <li><b>ChatClient</b>: <code>Program.cs</code> with two threads — main thread reads the keyboard and writes to the socket, a background thread reads the socket and prints.</li>
+</ul>
+<p>The protocol is plain text over TCP, one line per message (UTF-8). The client is “dumb”: it only sends what is typed and displays what is received; all parsing happens on the server. A single <code>Server</code> instance is shared by all <code>ClientHandler</code> threads; shared state (the dictionary, each writer, the log file) is protected by locks.</p>
+<pre class="mermaid">
+flowchart LR
+  subgraph Clients
+    C1[ChatClient alice]
+    C2[ChatClient bob]
+  end
+  subgraph ChatServer
+    P[Program accept thread]
+    H1[ClientHandler thread alice]
+    H2[ClientHandler thread bob]
+    S[Server - Dictionary + events]
+    L[Logger]
+  end
+  C1 -- TCP line --> H1
+  C2 -- TCP line --> H2
+  P -- new thread --> H1
+  P -- new thread --> H2
+  H1 --> S
+  H2 --> S
+  S -- MessageBroadcast event --> H1
+  S -- MessageBroadcast event --> H2
+  S -- activity events --> L
+</pre>
+
+<div class="feature">
+<h3 id="f-start">b.2 Start and stop the server (server function 1)</h3>
+<p>The accept loop runs in a dedicated background thread so that the main thread stays free to read the server console. When the operator types <code>stop</code>, the server sets <code>IsStopping</code>, stops the listener (which unblocks <code>AcceptTcpClient</code> with a <code>SocketException</code>), copies the list of handlers under the lock, then warns and closes each client <i>outside</i> the lock. Each handler's <code>finally</code> then unregisters itself; the main thread waits until the list is empty before exiting.</p>
+<pre class="mermaid">
+sequenceDiagram
+  actor Op as Operator
+  participant S as Server
+  participant H as ClientHandler
+  participant C as Client
+  participant L as Logger
+  Op->>S: stop (server console)
+  S->>S: IsStopping = true, listener.Stop()
+  S->>S: copy handlers under _clientsLock
+  S->>H: Send("Le serveur s'arrête")
+  H->>C: line
+  S->>H: Close()
+  H-->>H: ReadLine fails, finally block
+  H->>S: NotifyDisconnected / Unregister
+  S->>L: ClientDisconnected event
+  C-->>C: read thread sees end of stream, "Connexion perdue", exit
+</pre>
+<figure><img src="screenshots/01_server_start.png" alt="Server start"><figcaption>Server started</figcaption></figure>
+<figure><img src="screenshots/12_server_stop.png" alt="Server stop"><figcaption>Typing <code>stop</code>: clients are warned and disconnected</figcaption></figure>
+</div>
+
+<div class="feature">
+<h3 id="f-login">b.3 Connection and username login (server 2, 3, 4 — client 1, 2)</h3>
+<p>For each accepted <code>TcpClient</code> the accept thread creates a <code>ClientHandler</code> and starts it in a new background thread. The handler asks for a username; <code>Server.TryRegister</code> checks uniqueness and inserts into the dictionary in a single locked operation, so two clients cannot obtain the same name. If the name is taken or invalid, the server asks again. Only after a successful login does the handler subscribe to the broadcast event and announce the arrival.</p>
+<pre class="mermaid">
+sequenceDiagram
+  participant C as Client
+  participant H as ClientHandler
+  participant S as Server
+  participant L as Logger
+  C->>H: TCP connect (accept thread starts handler thread)
+  H->>C: "Entrez votre pseudo"
+  C->>H: Alice
+  H->>S: TryRegister("Alice")
+  S-->>H: false (name taken)
+  H->>C: "déjà pris. Réessayez"
+  C->>H: bob
+  H->>S: TryRegister("bob")
+  S-->>H: true
+  H->>S: MessageBroadcast += OnBroadcast
+  H->>S: NotifyConnected
+  S->>L: ClientConnected event
+  H->>S: Broadcast("bob a rejoint le chat")
+</pre>
+<figure><img src="screenshots/02_login.png" alt="Login"><figcaption>Duplicate username refused, then successful login</figcaption></figure>
+</div>
+
+<div class="feature">
+<h3 id="f-broadcast">b.4 Public messages and broadcast with delegates (server 5, 6 — client 3, 4)</h3>
+<p>A line that does not start with <code>/</code> is a public message. The handler formats it with a server-side timestamp and calls <code>Server.Broadcast</code>, which raises the <code>MessageBroadcast</code> event. The event invokes the <code>OnBroadcast</code> method of every subscribed handler; each one writes the line to its own client under its own writer lock. The server never iterates over clients to send a message: the delegate invocation list does it, which keeps <code>Server</code> decoupled from <code>ClientHandler</code>.</p>
+<pre class="mermaid">
+sequenceDiagram
+  participant CA as Client alice
+  participant HA as ClientHandler alice
+  participant S as Server
+  participant HB as ClientHandler bob
+  participant CB as Client bob
+  participant L as Logger
+  CA->>HA: Bonjour à tous
+  HA->>S: NotifyMessage
+  S->>L: MessageReceived event
+  HA->>S: Broadcast("[21:05] alice : Bonjour à tous")
+  S->>HA: MessageBroadcast event (OnBroadcast)
+  S->>HB: MessageBroadcast event (OnBroadcast)
+  HA->>CA: line
+  HB->>CB: line
+</pre>
+<figure><img src="screenshots/03_broadcast.png" alt="Broadcast"><figcaption>Message broadcast to every client with a server timestamp</figcaption></figure>
+</div>
+
+<div class="feature">
+<h3 id="f-private">b.5 Private messages (server 7 — client 5)</h3>
+<p><code>/msg user text</code> is parsed by the sender's handler. <code>Server.Find</code> looks the recipient up in the dictionary under the lock; the handler then writes directly into the recipient's writer (<code>target.Send</code>, protected by the recipient's writer lock) and echoes the message to the sender. The broadcast event is not used, so nobody else receives it. An unknown user produces a clear error.</p>
+<pre class="mermaid">
+sequenceDiagram
+  participant CB as Client bob
+  participant HB as ClientHandler bob
+  participant S as Server
+  participant HA as ClientHandler alice
+  participant CA as Client alice
+  CB->>HB: /msg alice salut en privé
+  HB->>S: Find("alice")
+  S-->>HB: handler of alice
+  HB->>HA: Send("(privé) bob : salut en privé")
+  HA->>CA: line
+  HB->>CB: echo "(privé à alice)"
+  CB->>HB: /msg zoe test
+  HB->>S: Find("zoe")
+  S-->>HB: null
+  HB->>CB: "Erreur : utilisateur 'zoe' inconnu"
+</pre>
+<figure><img src="screenshots/04_private.png" alt="Private message"><figcaption>Private message, echo, and unknown-user error</figcaption></figure>
+</div>
+
+<div class="feature">
+<h3 id="f-commands">b.6 Commands /users, /name, /help, /quit</h3>
+<p>All commands are parsed on the server in <code>ClientHandler.HandleCommand</code>. <code>/users</code> returns a sorted copy of the dictionary keys taken under the lock. <code>/name</code> calls <code>Server.TryRename</code>, which checks uniqueness and replaces the key inside the same lock (no window where two users could take the same name), then announces the change to everyone. <code>/quit</code> answers “Au revoir”, leaves the read loop and lets the <code>finally</code> block do the cleanup. <code>/help</code> lists the commands.</p>
+<pre class="mermaid">
+sequenceDiagram
+  participant C as Client bob
+  participant H as ClientHandler bob
+  participant S as Server
+  C->>H: /users
+  H->>S: GetUserNames() under lock
+  H->>C: "Connectés (2) : alice, bob"
+  C->>H: /name robert
+  H->>S: TryRename("bob", "robert") under lock
+  S-->>H: true
+  H->>S: Broadcast("bob s'appelle maintenant robert")
+  C->>H: /quit
+  H->>C: "Au revoir !"
+  H-->>H: leave loop, finally (unsubscribe, unregister, close)
+  H->>S: Broadcast("robert a quitté le chat")
+</pre>
+<figure><img src="screenshots/05_users.png" alt="/users"><figcaption><code>/users</code></figcaption></figure>
+<figure><img src="screenshots/06_rename.png" alt="/name"><figcaption><code>/name</code>, including a refused duplicate</figcaption></figure>
+<figure><img src="screenshots/07_help.png" alt="/help"><figcaption><code>/help</code></figcaption></figure>
+<figure><img src="screenshots/09_quit.png" alt="/quit"><figcaption><code>/quit</code> and departure announcement</figcaption></figure>
+</div>
+
+<div class="feature">
+<h3 id="f-log">b.7 Logging server activity (server 8)</h3>
+<p>The <code>Logger</code> uses exactly the same pattern as the broadcast: <code>Server</code> exposes four events of type <code>LogEventHandler</code> (<code>ClientConnected</code>, <code>ClientDisconnected</code>, <code>MessageReceived</code>, <code>ErrorOccurred</code>) raised through <code>protected virtual On…</code> methods. <code>Logger.Attach</code> subscribes to them. Every handler formats a time-stamped line with a category and writes it to the console and to <code>server.log</code> inside a lock, because events are raised concurrently by several client threads. The server code never writes errors with <code>Console.WriteLine</code> directly.</p>
+<pre class="mermaid">
+sequenceDiagram
+  participant H as ClientHandler
+  participant S as Server
+  participant L as Logger
+  H->>S: ReportError("Connexion perdue avec bob")
+  S->>S: OnErrorOccurred(e)
+  S->>L: ErrorOccurred event (OnErrorOccurred)
+  L->>L: lock(_logLock)
+  L->>L: Console.WriteLine + File.AppendAllText(server.log)
+</pre>
+<figure><img src="screenshots/11_server_log.png" alt="server.log"><figcaption>Content of <code>server.log</code></figcaption></figure>
+</div>
+
+<div class="feature">
+<h3 id="f-robust">b.8 Disconnections and client robustness</h3>
+<p>On the server, <code>ClientHandler.Run</code> is wrapped in <code>try/catch/finally</code>: an abrupt disconnection raises an <code>IOException</code> (logged as an error), and the <code>finally</code> block always unsubscribes from the event, announces the departure, removes the user from the dictionary and closes the socket. A client that never finished the login is simply closed. On the client, a missing server is caught at connection time (<code>SocketException</code>). When the server closes the connection, the network thread detects the end of stream (or an <code>IOException</code>), prints “Connexion perdue avec le serveur.” and ends the process with <code>Environment.Exit</code>, because the main thread is blocked in <code>Console.ReadLine</code>.</p>
+<pre class="mermaid">
+sequenceDiagram
+  participant C as Client charlie
+  participant H as ClientHandler charlie
+  participant S as Server
+  participant L as Logger
+  C--xH: window closed (connection reset)
+  H-->>H: ReadLine throws IOException or returns null
+  H->>S: ReportError (if IOException)
+  S->>L: ErrorOccurred event
+  H->>S: MessageBroadcast -= OnBroadcast
+  H->>S: NotifyDisconnected
+  S->>L: ClientDisconnected event
+  H->>S: Broadcast("charlie a quitté le chat")
+  H->>S: Unregister("charlie")
+  H->>H: Close()
+</pre>
+<figure><img src="screenshots/10_brutal_disconnect.png" alt="Abrupt disconnection"><figcaption>Client window closed abruptly: cleanup and announcement</figcaption></figure>
+<figure><img src="screenshots/13_no_server.png" alt="No server"><figcaption>Client started while the server is down</figcaption></figure>
+</div>
+
+<div class="feature">
+<h3 id="f-joke">b.9 Extension: /joke</h3>
+<p><code>/joke</code> calls <code>JokeService.GetJoke</code>, which uses a single static <code>HttpClient</code> shared by the whole application and a synchronous <code>Send</code> (consistent with the thread-based design: the call blocks only the requesting client's thread). The request targets <code>/jokes/random?category=dev</code> to avoid explicit jokes. The JSON field <code>value</code> is read with <code>System.Text.Json</code> and the joke is broadcast to everyone. Any network or parsing error is logged and the requester receives “Service de blagues indisponible.”</p>
+<pre class="mermaid">
+sequenceDiagram
+  participant C as Client
+  participant H as ClientHandler
+  participant J as JokeService
+  participant S as Server
+  participant L as Logger
+  C->>H: /joke
+  H->>J: GetJoke()
+  J->>J: HttpClient.Send GET api.chucknorris.io category dev
+  alt success
+    J-->>H: value
+    H->>S: Broadcast("[21:10] Chuck Norris : ...")
+  else error
+    J-->>H: exception
+    H->>S: ReportError
+    S->>L: ErrorOccurred event
+    H->>C: "Service de blagues indisponible."
+  end
+</pre>
+<figure><img src="screenshots/08_joke.png" alt="/joke"><figcaption><code>/joke</code> broadcast to every client</figcaption></figure>
+</div>
+
+<div class="feature">
+<h3 id="f-limits">b.10 Known limitations</h3>
+<table>
+<tr><th>Limitation</th><th>Cause</th><th>Impact</th><th>Possible fix</th></tr>
+<tr>
+  <td>A received line can be overwritten in the client window</td>
+  <td>On Windows, <code>Console.ReadLine</code> remembers where the input started and redraws the input from that position at the next keystroke. A line printed by the network thread while <code>ReadLine</code> is waiting can therefore be overwritten.</td>
+  <td>Display only: the message is correctly received (it is lost from the screen, not from the protocol).</td>
+  <td>Read the input key by key with <code>Console.ReadKey</code>, and share a lock with the network thread so it can clear the current input line, print the message, then redraw the input.</td>
+</tr>
+<tr>
+  <td>Synchronous broadcast</td>
+  <td>The <code>MessageBroadcast</code> event invokes every subscriber on the sender's thread, and each <code>OnBroadcast</code> writes to a socket.</td>
+  <td>A slow client (full TCP buffer) slows down the sender of the message.</td>
+  <td>One outgoing queue and writer thread per client, or asynchronous writes.</td>
+</tr>
+<tr>
+  <td>One thread per client</td>
+  <td>Each connection holds a dedicated thread blocked on <code>ReadLine</code>.</td>
+  <td>Fine for a classroom chat, but does not scale to thousands of clients (memory and context switches).</td>
+  <td><code>async</code>/<code>await</code> with asynchronous socket I/O.</td>
+</tr>
+</table>
+</div>
+</section>
+
+<!-- ===================================================== c -->
+<section id="impl">
+<h2>c. Main parts of the C# implementation</h2>
+
+<h3>c.1 Delegate and event for the broadcast (Server.cs)</h3>
+<p>The delegate defines the signature of the subscribers; the event can only be raised from inside <code>Server</code>. <code>?.Invoke</code> avoids a <code>NullReferenceException</code> when nobody is subscribed.</p>
+<pre class="code">public delegate void MessageEventHandler(object sender, MessageEventArgs e);
+
+public class MessageEventArgs : EventArgs
+{
+    public string Text { get; }
+    public MessageEventArgs(string text) { Text = text; }
+}
+
+public class Server
+{
+    public event MessageEventHandler? MessageBroadcast;
+
+    protected virtual void OnMessageBroadcast(MessageEventArgs e)
+    {
+        MessageBroadcast?.Invoke(this, e);
+    }
+
+    public void Broadcast(string text)
+    {
+        MessageEventArgs args = new MessageEventArgs(text);
+        OnMessageBroadcast(args);
+    }
+}</pre>
+<p>Subscriber side (ClientHandler.cs): subscription after login, unsubscription in <code>finally</code>, and a writer lock because several threads may raise the event at the same time.</p>
+<pre class="code">_server.MessageBroadcast += OnBroadcast;      // after a successful login
+...
+_server.MessageBroadcast -= OnBroadcast;      // in finally
+
+private void OnBroadcast(object sender, MessageEventArgs e)
+{
+    Send(e.Text);
+}
+
+// Direct write to this client, protected by the writer's lock
+public void Send(string text)
+{
+    lock (_writeLock)
+    {
+        try { _writer?.WriteLine(text); }
+        catch (IOException ex)
+        {
+            if (!_server.IsStopping)
+                _server.ReportError($"Envoi impossible à {Name ?? _endPoint} : {ex.Message}");
+        }
+        catch (ObjectDisposedException) { }
+    }
+}</pre>
+
+<h3>c.2 One thread per client (Program.cs, server)</h3>
+<pre class="code">// Accept loop in its own thread: the console stays free for 'stop'
+Thread acceptThread = new Thread(() =&gt;
+{
+    try
+    {
+        while (true)
+        {
+            TcpClient client = listener.AcceptTcpClient();
+            ClientHandler handler = new ClientHandler(client, server);
+            Thread thread = new Thread(handler.Run);
+            thread.IsBackground = true;   // does not keep the process alive
+            thread.Start();
+        }
+    }
+    catch (SocketException ex)
+    {
+        // listener.Stop() unblocks AcceptTcpClient with an exception
+        if (!server.IsStopping)
+            server.ReportError($"Boucle Accept interrompue : {ex.Message}");
+    }
+});</pre>
+
+<h3>c.3 Client list protected by a lock (Server.cs)</h3>
+<p>The dictionary is only accessed inside <code>lock (_clientsLock)</code>, a private object nobody else can lock. Check-and-insert and check-and-rename are atomic.</p>
+<pre class="code">private readonly Dictionary&lt;string, ClientHandler&gt; _clients =
+    new Dictionary&lt;string, ClientHandler&gt;(StringComparer.OrdinalIgnoreCase);
+private readonly object _clientsLock = new object();
+
+public bool TryRegister(string name, ClientHandler handler)
+{
+    lock (_clientsLock)
+    {
+        if (_clients.ContainsKey(name)) return false;
+        _clients.Add(name, handler);
+        return true;
+    }
+}
+
+public bool TryRename(string oldName, string newName, ClientHandler handler)
+{
+    lock (_clientsLock)
+    {
+        bool sameUser = string.Equals(oldName, newName, StringComparison.OrdinalIgnoreCase);
+        if (!sameUser &amp;&amp; _clients.ContainsKey(newName)) return false;
+        _clients.Remove(oldName);
+        _clients.Add(newName, handler);
+        return true;
+    }
+}</pre>
+
+<h3>c.4 Client life cycle and command handling (ClientHandler.cs)</h3>
+<pre class="code">public void Run()
+{
+    try
+    {
+        ...
+        if (!Login(reader)) return;
+        _server.MessageBroadcast += OnBroadcast;
+        _server.NotifyConnected($"{Name} ({_endPoint})");
+        _server.Broadcast($"*** {Name} a rejoint le chat.");
+
+        string? line;
+        while ((line = reader.ReadLine()) != null)
+        {
+            if (line.Trim().Length == 0) continue;
+            if (line.StartsWith('/'))
+            {
+                if (!HandleCommand(line)) break; // /quit
+            }
+            else
+            {
+                _server.NotifyMessage($"{Name} : {line}");
+                _server.Broadcast(Server.Format(Name!, line));   // [HH:mm] name : text
+            }
+        }
+    }
+    catch (IOException ex) { /* abrupt disconnection, logged */ }
+    catch (ObjectDisposedException) { }
+    finally
+    {
+        // Always executed, even after an abrupt disconnection
+        _server.MessageBroadcast -= OnBroadcast;
+        if (Name != null)          // only if the login succeeded
+        {
+            _server.NotifyDisconnected($"{Name} ({_endPoint})");
+            _server.Broadcast($"*** {Name} a quitté le chat.");
+            _server.Unregister(Name);
+        }
+        Close();
+    }
+}</pre>
+<pre class="code">private bool HandleCommand(string line)
+{
+    string[] parts = line.Split(' ', 3, StringSplitOptions.RemoveEmptyEntries);
+    switch (parts[0].ToLowerInvariant())
+    {
+        case "/msg":
+            ClientHandler? target = _server.Find(parts[1]);
+            if (target == null || target.Name == null) { Send("Erreur : utilisateur ... inconnu"); break; }
+            target.Send($"[{DateTime.Now:HH:mm}] (privé) {Name} : {parts[2]}");   // recipient's writer
+            Send($"[{DateTime.Now:HH:mm}] (privé à {target.Name}) {Name} : {parts[2]}");  // echo
+            break;
+        case "/users": ...   // _server.GetUserNames()
+        case "/name":  ...   // _server.TryRename(...) then Broadcast
+        case "/joke":  ...   // JokeService.GetJoke() then Broadcast
+        case "/quit":
+            Send("Au revoir !");
+            return false;   // leaves the loop, finally does the cleanup
+        case "/help":  ...
+    }
+    return true;
+}</pre>
+
+<h3>c.5 Logger (Logger.cs and Server.cs)</h3>
+<pre class="code">public delegate void LogEventHandler(object sender, LogEventArgs e);
+
+// In Server: same pattern as MessageBroadcast
+public event LogEventHandler? ClientConnected;
+public event LogEventHandler? ClientDisconnected;
+public event LogEventHandler? MessageReceived;
+public event LogEventHandler? ErrorOccurred;
+protected virtual void OnErrorOccurred(LogEventArgs e) { ErrorOccurred?.Invoke(this, e); }
+public void ReportError(string text) { OnErrorOccurred(new LogEventArgs(text)); }
+
+// In Logger
+public void Attach(Server server)
+{
+    server.ClientConnected += OnClientConnected;
+    server.ClientDisconnected += OnClientDisconnected;
+    server.MessageReceived += OnMessageReceived;
+    server.ErrorOccurred += OnErrorOccurred;
+}
+
+private void Write(string category, string text)
+{
+    string line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} [{category}] {text}";
+    lock (_logLock)   // several client threads log at the same time
+    {
+        Console.WriteLine(line);
+        File.AppendAllText(_path, line + Environment.NewLine);
+    }
+}</pre>
+
+<h3>c.6 Stopping the server (Program.cs and Server.cs)</h3>
+<p>The handlers are copied under the lock, then warned and closed <i>outside</i> the lock: closing a socket makes the handler's <code>finally</code> call <code>Unregister</code>, which takes the same lock — doing it inside would modify the collection during enumeration.</p>
+<pre class="code">// Program.cs
+Console.WriteLine("Arrêt du serveur...");
+server.IsStopping = true;
+listener.Stop();   // no more new connections
+server.StopAll("*** Le serveur s'arrête. Au revoir !");
+acceptThread.Join(2000);
+// wait (max 2 s) until every handler has finished its finally block
+while (server.GetUserNames().Count &gt; 0 &amp;&amp; DateTime.Now &lt; limit)
+    Thread.Sleep(50);
+
+// Server.cs
+public void StopAll(string message)
+{
+    IsStopping = true;
+    List&lt;ClientHandler&gt; handlers;
+    lock (_clientsLock)
+    {
+        handlers = _clients.Values.ToList();
+    }
+    foreach (ClientHandler handler in handlers)
+    {
+        handler.Send(message);
+        handler.Close();
+    }
+}</pre>
+
+<h3>c.7 Client: two threads and robustness (ChatClient/Program.cs)</h3>
+<pre class="code">try { client = new TcpClient("127.0.0.1", 5050); }
+catch (SocketException)
+{
+    Console.WriteLine("Impossible de joindre le serveur 127.0.0.1:5050 (est-il démarré ?).");
+    return 1;
+}
+
+// Network thread: prints everything the server sends
+Thread readThread = new Thread(() =&gt;
+{
+    try
+    {
+        string? l;
+        while ((l = reader.ReadLine()) != null)
+            Console.WriteLine(l);
+    }
+    catch (IOException) { }
+    catch (ObjectDisposedException) { }
+
+    if (Volatile.Read(ref quitting)) return;
+    // Server side cut: main thread is blocked on Console.ReadLine, so exit the process
+    Console.WriteLine("Connexion perdue avec le serveur.");
+    Environment.Exit(1);
+});
+readThread.IsBackground = true;
+readThread.Start();
+// Main thread: keyboard -&gt; server (writer.WriteLine in try/catch IOException)</pre>
+</section>
+
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: true, theme: "neutral", sequence: { mirrorActors: false } });
+</script>
+</body>
+</html>
