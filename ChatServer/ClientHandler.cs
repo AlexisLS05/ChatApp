@@ -175,7 +175,7 @@ public class ClientHandler
 
     public static bool IsValidName(string name)
     {
-        return name.Length > 0 && name.Length <= 20 && !name.Contains(' ') && !name.StartsWith('/');
+        return name.Length > 0 && name.Length <= 20 && !name.Contains(' ') && !name.Contains('/');
     }
 
     // Écriture directe vers ce client, protégée par le lock du writer
